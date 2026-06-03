@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CSAT/DSAT Report Generator</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>CSAT / DSAT Report Generator</h1>
+        <p id="subtitle">Upload survey CSV or Excel data to generate reporting trends.</p>
+      </div>
+    </header>
+
+    <main>
+      <section class="upload-panel" id="dropZone">
+        <input id="fileInput" type="file" accept=".csv,.xlsx,.xlsm" />
+        <div>
+          <strong>Upload survey file</strong>
+          <span>CSV, XLSX, or XLSM with Survey Details columns</span>
+        </div>
+        <button id="pickFile" class="primary">Choose File</button>
+      </section>
+
+      <section id="status" class="status" hidden></section>
+
+      <section id="report" hidden>
+        <div class="report-head">
+          <div>
+            <h2 id="reportTitle">Generated Report</h2>
+            <p id="reportMeta"></p>
+          </div>
+          <div class="actions">
+            <button id="downloadSummary" class="secondary">Download Summary CSV</button>
+            <button id="downloadDsat" class="secondary">Download DSAT CSV</button>
+          </div>
+        </div>
+
+        <section class="kpis">
+          <div><span>Total Surveys</span><strong id="kpiTotal">-</strong></div>
+          <div><span>CSAT</span><strong id="kpiCsat">-</strong></div>
+          <div><span>DSAT</span><strong id="kpiDsat">-</strong></div>
+          <div><span>NPS</span><strong id="kpiNps">-</strong></div>
+          <div><span>Avg Rating</span><strong id="kpiRating">-</strong></div>
+          <div><span>Avg Turnaround</span><strong id="kpiTurnaround">-</strong></div>
+        </section>
+
+        <section class="grid">
+          <div class="panel">
+            <h3>CSAT vs DSAT</h3>
+            <canvas id="pieChart" width="420" height="260"></canvas>
+          </div>
+          <div class="panel">
+            <h3>Daily CSAT Trend</h3>
+            <canvas id="trendChart" width="640" height="260"></canvas>
+          </div>
+          <div class="panel">
+            <h3>Rating Distribution</h3>
+            <canvas id="ratingChart" width="420" height="260"></canvas>
+          </div>
+          <div class="panel">
+            <h3>Top Positive Drivers</h3>
+            <canvas id="driverChart" width="640" height="260"></canvas>
+          </div>
+        </section>
+
+        <section class="tables">
+          <div class="table-panel">
+            <h3>Product Breakdown</h3>
+            <div id="productTable"></div>
+          </div>
+          <div class="table-panel">
+            <h3>User Breakdown</h3>
+            <div id="userTable"></div>
+          </div>
+          <div class="table-panel wide">
+            <h3>DSAT Cases</h3>
+            <div id="dsatTable"></div>
+          </div>
+          <div class="table-panel wide">
+            <h3>Negative Drivers</h3>
+            <div id="negativeTable"></div>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
