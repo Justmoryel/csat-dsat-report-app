@@ -1,6 +1,6 @@
 # CSAT / DSAT Report Generator
 
-Local web app for generating CSAT/DSAT reporting dashboards from Survey Details CSV or Excel files.
+Browser app for generating CSAT/DSAT reporting dashboards from Survey Details CSV or Excel files.
 
 ## Features
 
@@ -10,25 +10,11 @@ Local web app for generating CSAT/DSAT reporting dashboards from Survey Details 
 - Review product, user, DSAT case, and negative driver tables
 - Download summary and DSAT case CSV exports
 
-## Run Locally
+## Open The App
 
-Install dependencies:
+This app is built as a static GitHub Pages site.
 
-```powershell
-npm install
-```
-
-Start the app:
-
-```powershell
-npm start
-```
-
-Open:
-
-```text
-http://localhost:4173
-```
+After GitHub Pages is enabled, open the Pages URL from the repository settings.
 
 ## Expected Input
 
@@ -55,4 +41,10 @@ Recommended columns:
 
 ## Notes
 
-This app is intended to run locally. It does not store uploaded files; uploaded data is analyzed in memory and returned to the browser.
+This app does not store uploaded files. Uploaded data is analyzed in your browser.
+
+Excel parsing uses SheetJS from a CDN:
+
+```html
+https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js
+```

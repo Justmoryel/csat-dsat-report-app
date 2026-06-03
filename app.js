@@ -35,19 +35,259 @@ async function analyzeBlob(blob, filename) {
   setStatus(`Analyzing ${filename}...`);
   report.hidden = true;
   try {
-    const response = await fetch("/api/analyze", {
-      method: "POST",
-      headers: { "Content-Type": "application/octet-stream", "X-File-Name": encodeURIComponent(filename) },
-      body: await blob.arrayBuffer(),
-    });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || "Analysis failed.");
+    const rows = await parseUpload(blob, filename);
+    const result = analyzeRows(rows, filename);
     currentReport = result;
     renderReport(result);
     setStatus(`Report generated from ${result.rowCount.toLocaleString()} rows and ${result.surveyCount.toLocaleString()} unique surveys.`);
   } catch (error) {
     setStatus(error.message, true);
   }
+}
+
+async function parseUpload(file, filename) {
+  const lower = filename.toLowerCase();
+  if (lower.endsWith(".xlsx") || lower.endsWith(".xlsm")) {
+    if (!window.XLSX) throw new Error("Excel parser did not load. Check your internet connection and refresh the page.");
+    const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: false });
+    const sheetName = workbook.SheetNames[0];
+    if (!sheetName) return [];
+    const matrix = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
+      header: 1,
+      defval: "",
+      blankrows: false,
+    });
+    return matrixToObjects(matrix);
+  }
+  return parseCsv(await file.text());
+}
+
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let field = "";
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    const next = text[i + 1];
+    if (inQuotes) {
+      if (ch === '"' && next === '"') {
+        field += '"';
+        i++;
+      } else if (ch === '"') {
+        inQuotes = false;
+      } else {
+        field += ch;
+      }
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ",") {
+      row.push(field);
+      field = "";
+    } else if (ch === "\n") {
+      row.push(field.replace(/\r$/, ""));
+      rows.push(row);
+      row = [];
+      field = "";
+    } else {
+      field += ch;
+    }
+  }
+  if (field.length || row.length) {
+    row.push(field.replace(/\r$/, ""));
+    rows.push(row);
+  }
+  return matrixToObjects(rows);
+}
+
+function matrixToObjects(matrix) {
+  const clean = matrix.filter((r) => Array.isArray(r) && r.some((v) => v !== null && v !== undefined && String(v).trim() !== ""));
+  if (!clean.length) return [];
+  const headers = clean.shift().map((h, idx) => String(h ?? "").replace(/^\uFEFF/, "").trim() || `Column ${idx + 1}`);
+  return clean.map((r) => {
+    const obj = {};
+    headers.forEach((h, idx) => {
+      obj[h] = r[idx] == null ? "" : String(r[idx]).trim();
+    });
+    return obj;
+  });
+}
+
+function toNum(value) {
+  if (value == null || value === "") return null;
+  const num = Number(String(value).replace(/,/g, ""));
+  return Number.isFinite(num) ? num : null;
+}
+
+function parseDate(value) {
+  if (!value) return new Date(NaN);
+  if (typeof value === "number") return new Date(Math.round((value - 25569) * 86400 * 1000));
+  const text = String(value).trim();
+  const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+  const match = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?)?$/i);
+  if (!match) return new Date(text);
+  let [, month, day, year, hour = "0", minute = "0", second = "0", ampm = ""] = match;
+  let h = Number(hour);
+  if (ampm.toUpperCase() === "PM" && h < 12) h += 12;
+  if (ampm.toUpperCase() === "AM" && h === 12) h = 0;
+  return new Date(Number(year), Number(month) - 1, Number(day), h, Number(minute), Number(second));
+}
+
+function dateOnly(value) {
+  const d = parseDate(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function groupBy(items, fn) {
+  const groups = new Map();
+  for (const item of items) {
+    const key = fn(item) || "(blank)";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(item);
+  }
+  return [...groups.entries()];
+}
+
+function countBy(items, fn) {
+  return groupBy(items, fn)
+    .map(([name, rows]) => ({ name, count: rows.length }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+}
+
+function average(values) {
+  const nums = values.filter((v) => Number.isFinite(v));
+  return nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : 0;
+}
+
+function pct(n, d) {
+  return d ? n / d : 0;
+}
+
+function analyzeRows(rows, filename) {
+  const ratingCol = "How would you rate the quality of the work we completed?";
+  const npsGroup = "NPSExistingBrandNPSSection";
+  if (!rows.length) throw new Error("No data rows found.");
+  const headers = Object.keys(rows[0]);
+  const missing = ["SURVEY_CASE", "QUESTION_GROUP", ratingCol].filter((h) => !headers.includes(h));
+  if (missing.length) throw new Error(`Missing required column(s): ${missing.join(", ")}`);
+
+  const surveys = groupBy(rows, (r) => r.SURVEY_CASE).map(([surveyCase, group]) => {
+    const first = group[0];
+    const rating = group.map((r) => toNum(r[ratingCol])).find((v) => v != null) ?? null;
+    const nps = group
+      .filter((r) => r.QUESTION_GROUP === npsGroup)
+      .flatMap((r) => [r.RESPONSE, r.RESPONSE_TEXT, r["Response Text/Comment"]])
+      .map(toNum)
+      .find((v) => v != null) ?? null;
+    const statusDate = parseDate(first.SURVEY_CASE_STATUS_DATE);
+    const createDate = parseDate(first.CASE_CREATE_DATE);
+    const turnaroundDays =
+      !Number.isNaN(statusDate.getTime()) && !Number.isNaN(createDate.getTime())
+        ? (statusDate.getTime() - createDate.getTime()) / 86400000
+        : null;
+    return {
+      surveyCase,
+      caseId: first.CASE_ID || "",
+      surveyDate: dateOnly(first["Day Date"] || first.SURVEY_CASE_STATUS_DATE),
+      brand: first.BRAND || "",
+      product: first.PRODUCT_NAME || "",
+      completeUser: first.CASE_COMPLETE_USER || "",
+      rating,
+      csat: rating != null && rating >= 4 ? 1 : 0,
+      dsat: rating != null && rating <= 3 ? 1 : 0,
+      nps,
+      turnaroundDays,
+      rows: group,
+    };
+  });
+
+  const rated = surveys.filter((s) => s.rating != null);
+  const npsRated = surveys.filter((s) => s.nps != null);
+  const total = rated.length;
+  const csat = rated.filter((s) => s.csat).length;
+  const dsat = rated.filter((s) => s.dsat).length;
+  const promoters = npsRated.filter((s) => s.nps >= 9).length;
+  const passives = npsRated.filter((s) => s.nps >= 7 && s.nps <= 8).length;
+  const detractors = npsRated.filter((s) => s.nps <= 6).length;
+
+  const daily = groupBy(rated, (s) => s.surveyDate)
+    .map(([date, items]) => ({
+      date,
+      total: items.length,
+      csat: items.filter((s) => s.csat).length,
+      dsat: items.filter((s) => s.dsat).length,
+      csatRate: pct(items.filter((s) => s.csat).length, items.length),
+      dsatRate: pct(items.filter((s) => s.dsat).length, items.length),
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const productSummary = groupBy(rated, (s) => s.product)
+    .map(([product, items]) => ({
+      product,
+      total: items.length,
+      csat: items.filter((s) => s.csat).length,
+      dsat: items.filter((s) => s.dsat).length,
+      csatRate: pct(items.filter((s) => s.csat).length, items.length),
+      dsatRate: pct(items.filter((s) => s.dsat).length, items.length),
+    }))
+    .sort((a, b) => b.total - a.total);
+
+  const userSummary = groupBy(rated, (s) => s.completeUser)
+    .map(([user, items]) => ({
+      user,
+      total: items.length,
+      csatRate: pct(items.filter((s) => s.csat).length, items.length),
+      dsatRate: pct(items.filter((s) => s.dsat).length, items.length),
+      avgRating: average(items.map((s) => s.rating)),
+    }))
+    .sort((a, b) => b.total - a.total);
+
+  const dsatCases = rated
+    .filter((s) => s.dsat)
+    .map((s) => ({
+      surveyCase: s.surveyCase,
+      caseId: s.caseId,
+      date: s.surveyDate,
+      rating: s.rating,
+      nps: s.nps,
+      user: s.completeUser,
+      product: s.product,
+      reasons: s.rows
+        .filter((r) => r.QUESTION_GROUP === "RatingBetween1To3" && r["Response Text/Comment"]?.trim())
+        .map((r) => r["Response Text/Comment"].trim())
+        .join("; "),
+    }));
+
+  return {
+    filename,
+    generatedAt: new Date().toISOString(),
+    rowCount: rows.length,
+    surveyCount: surveys.length,
+    dateRange: `${daily[0]?.date || ""} to ${daily.at(-1)?.date || ""}`,
+    kpis: {
+      ratedSurveys: total,
+      csatCount: csat,
+      dsatCount: dsat,
+      csatRate: pct(csat, total),
+      dsatRate: pct(dsat, total),
+      averageRating: average(rated.map((s) => s.rating)),
+      npsResponses: npsRated.length,
+      npsScore: npsRated.length ? ((promoters - detractors) / npsRated.length) * 100 : 0,
+      averageTurnaroundDays: average(surveys.map((s) => s.turnaroundDays)),
+    },
+    ratingDistribution: countBy(rated, (s) => String(s.rating)).sort((a, b) => Number(a.name) - Number(b.name)),
+    daily,
+    productSummary,
+    userSummary,
+    positiveDrivers: countBy(rows.filter((r) => r.QUESTION_GROUP === "RatingBetween4To5" && r["Response Text/Comment"]?.trim()), (r) => r["Response Text/Comment"].trim()),
+    negativeDrivers: countBy(rows.filter((r) => r.QUESTION_GROUP === "RatingBetween1To3" && r["Response Text/Comment"]?.trim()), (r) => r["Response Text/Comment"].trim()),
+    dsatCases,
+  };
 }
 
 function setStatus(message, isError = false) {
