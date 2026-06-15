@@ -39,6 +39,30 @@ Recommended columns:
 - `RESPONSE`
 - `RESPONSE_TEXT`
 
+## CSAT Calculation
+
+The app uses Tableau-style weighted CSAT scoring:
+
+| Rating | Weight |
+| --- | ---: |
+| 1 | 20% |
+| 2 | 40% |
+| 3 | 60% |
+| 4 | 80% |
+| 5 | 100% |
+
+Formula:
+
+```text
+CSAT = average rating weight
+```
+
+Example: nine `5` ratings and one `3` rating:
+
+```text
+((9 * 100%) + (1 * 60%)) / 10 = 96%
+```
+
 ## Notes
 
 This app does not store uploaded files. Uploaded data is analyzed in your browser.

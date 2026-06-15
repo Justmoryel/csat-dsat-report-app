@@ -7,6 +7,7 @@ let currentReport = null;
 
 const fmtPct = (v) => `${(v * 100).toFixed(1)}%`;
 const fmtNum = (v, d = 0) => Number(v || 0).toFixed(d);
+const ratingWeight = (rating) => ({ 1: 0.2, 2: 0.4, 3: 0.6, 4: 0.8, 5: 1 }[rating] ?? 0);
 
 pickFile.addEventListener("click", () => fileInput.click());
 fileInput.addEventListener("change", () => fileInput.files[0] && analyzeFile(fileInput.files[0]));
@@ -198,6 +199,7 @@ function analyzeRows(rows, filename) {
       product: first.PRODUCT_NAME || "",
       completeUser: first.CASE_COMPLETE_USER || "",
       rating,
+      csatScore: ratingWeight(rating),
       csat: rating != null && rating >= 4 ? 1 : 0,
       dsat: rating != null && rating <= 3 ? 1 : 0,
       nps,
@@ -221,7 +223,7 @@ function analyzeRows(rows, filename) {
       total: items.length,
       csat: items.filter((s) => s.csat).length,
       dsat: items.filter((s) => s.dsat).length,
-      csatRate: pct(items.filter((s) => s.csat).length, items.length),
+      csatRate: average(items.map((s) => s.csatScore)),
       dsatRate: pct(items.filter((s) => s.dsat).length, items.length),
     }))
     .sort((a, b) => a.date.localeCompare(b.date));
@@ -232,7 +234,7 @@ function analyzeRows(rows, filename) {
       total: items.length,
       csat: items.filter((s) => s.csat).length,
       dsat: items.filter((s) => s.dsat).length,
-      csatRate: pct(items.filter((s) => s.csat).length, items.length),
+      csatRate: average(items.map((s) => s.csatScore)),
       dsatRate: pct(items.filter((s) => s.dsat).length, items.length),
     }))
     .sort((a, b) => b.total - a.total);
@@ -241,7 +243,7 @@ function analyzeRows(rows, filename) {
     .map(([user, items]) => ({
       user,
       total: items.length,
-      csatRate: pct(items.filter((s) => s.csat).length, items.length),
+      csatRate: average(items.map((s) => s.csatScore)),
       dsatRate: pct(items.filter((s) => s.dsat).length, items.length),
       avgRating: average(items.map((s) => s.rating)),
     }))
@@ -273,7 +275,7 @@ function analyzeRows(rows, filename) {
       ratedSurveys: total,
       csatCount: csat,
       dsatCount: dsat,
-      csatRate: pct(csat, total),
+      csatRate: average(rated.map((s) => s.csatScore)),
       dsatRate: pct(dsat, total),
       averageRating: average(rated.map((s) => s.rating)),
       npsResponses: npsRated.length,
