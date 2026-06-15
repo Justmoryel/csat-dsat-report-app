@@ -1,7 +1,7 @@
 # CSAT / DSAT Report Generator
 
 Live app: https://justmoryel.github.io/csat-dsat-report-app/
-Browser app for generating CSAT/DSAT reporting dashboards from Survey Details CSV or Excel files.
+Browser app for generating CSAT/DSAT reporting dashboards from Survey Details CSV or Excel file.
 
 ## Features
 
